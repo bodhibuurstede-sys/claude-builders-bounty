@@ -14,24 +14,32 @@ from typing import Any
 
 
 BLOCKED_LOG = Path.home() / ".claude" / "hooks" / "blocked.log"
+SQL_CLIENTS = {
+    "clickhouse-client",
+    "cockroach",
+    "duckdb",
+    "mariadb",
+    "mysql",
+    "psql",
+    "sqlite3",
+    "sqlcmd",
+}
 
 
 def find_block_reason(command: str) -> str | None:
-    normalized = " ".join(command.split())
-
     if _contains_forced_recursive_rm(command):
         return "Blocked destructive recursive remove command (rm with recursive and force flags)."
 
     if _contains_git_force_push(command):
         return "Blocked force-push command. Use a reviewed non-force push workflow instead."
 
-    if re.search(r"\bdrop\s+table\b", normalized, flags=re.IGNORECASE):
+    if _contains_sql_pattern(command, r"\bdrop\s+table\b"):
         return "Blocked SQL DROP TABLE statement."
 
-    if re.search(r"\btruncate\b", normalized, flags=re.IGNORECASE):
+    if _contains_sql_pattern(command, r"\btruncate\b"):
         return "Blocked SQL TRUNCATE statement."
 
-    if _contains_delete_without_where(normalized):
+    if _contains_delete_without_where(command):
         return "Blocked SQL DELETE FROM statement without a WHERE clause."
 
     return None
@@ -130,8 +138,15 @@ def _contains_git_force_push(command: str) -> bool:
     return False
 
 
+def _contains_sql_pattern(command: str, pattern: str) -> bool:
+    for statement in _sql_relevant_statements(command):
+        if re.search(pattern, statement, flags=re.IGNORECASE):
+            return True
+    return False
+
+
 def _contains_delete_without_where(command: str) -> bool:
-    for statement in re.split(r";|&&|\|\|", command):
+    for statement in _sql_relevant_statements(command):
         if re.search(r"\bdelete\s+from\b", statement, flags=re.IGNORECASE) and not re.search(
             r"\bwhere\b",
             statement,
@@ -139,6 +154,28 @@ def _contains_delete_without_where(command: str) -> bool:
         ):
             return True
     return False
+
+
+def _sql_relevant_statements(command: str) -> list[str]:
+    statements: list[str] = []
+    for segment in re.split(r";|&&|\|\|", command):
+        stripped = " ".join(segment.split())
+        if not stripped:
+            continue
+        if _segment_uses_sql_client(segment) or _starts_with_sql_keyword(stripped):
+            statements.append(stripped)
+    return statements
+
+
+def _segment_uses_sql_client(segment: str) -> bool:
+    for argv in _split_command_words(segment):
+        if any(_is_command_name(arg, client) for arg in argv for client in SQL_CLIENTS):
+            return True
+    return False
+
+
+def _starts_with_sql_keyword(statement: str) -> bool:
+    return bool(re.match(r"^\s*(drop\s+table|truncate|delete\s+from)\b", statement, flags=re.IGNORECASE))
 
 
 def _split_command_words(command: str) -> list[list[str]]:
