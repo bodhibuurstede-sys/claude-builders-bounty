@@ -15,11 +15,11 @@ The saved hook command uses the same Python interpreter that ran the installer.
 
 - `rm` with both recursive and force flags, including `rm -rf`, `rm -fr`, `rm -r -f`, and `rm --recursive --force`
 - `git push --force`, `git push -f`, and `git push --force-with-lease`
-- SQL `DROP TABLE`
-- SQL `TRUNCATE`
-- SQL `DELETE FROM` statements without a `WHERE` clause
+- SQL `DROP TABLE` sent to common SQL clients such as `psql`, `mysql`, `sqlite3`, `duckdb`, or entered as a direct SQL command
+- SQL `TRUNCATE` sent to common SQL clients or entered as a direct SQL command
+- SQL `DELETE FROM` statements without a `WHERE` clause when sent to common SQL clients or entered as direct SQL
 
-Normal Bash commands exit silently with no hook output, so Claude Code continues as usual.
+Normal Bash commands exit silently with no hook output, so Claude Code continues as usual. Text-only mentions such as `echo "DROP TABLE users"` or `grep "DELETE FROM" migrations/*.sql` are allowed unless they are piped into a SQL client.
 
 ## Log File
 
