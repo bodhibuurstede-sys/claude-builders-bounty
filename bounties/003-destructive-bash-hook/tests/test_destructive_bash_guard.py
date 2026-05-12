@@ -36,9 +36,16 @@ class DestructiveBashGuardTest(unittest.TestCase):
         self.assertIn("DROP TABLE", guard.find_block_reason('psql -c "DROP TABLE users"'))
         self.assertIn("TRUNCATE", guard.find_block_reason("mysql -e 'TRUNCATE sessions'"))
         self.assertIn("DELETE FROM", guard.find_block_reason('psql -c "DELETE FROM users"'))
+        self.assertIn("DROP TABLE", guard.find_block_reason('echo "DROP TABLE users" | psql'))
+        self.assertIn("DELETE FROM", guard.find_block_reason("DELETE FROM users"))
 
     def test_allows_delete_with_where(self) -> None:
         self.assertIsNone(guard.find_block_reason('psql -c "DELETE FROM users WHERE id = 1"'))
+
+    def test_allows_text_only_sql_mentions(self) -> None:
+        self.assertIsNone(guard.find_block_reason('echo "DROP TABLE users"'))
+        self.assertIsNone(guard.find_block_reason('grep "DELETE FROM" migrations/*.sql'))
+        self.assertIsNone(guard.find_block_reason('printf "TRUNCATE sessions"'))
 
     def test_denies_and_logs_blocked_pre_tool_use(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
