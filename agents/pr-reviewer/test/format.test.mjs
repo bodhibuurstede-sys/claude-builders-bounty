@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
-import { buildHeuristicReview, parsePrUrl } from "../bin/claude-review.mjs";
+import { buildHeuristicReview, parsePrUrl, withCommentMarker } from "../bin/claude-review.mjs";
 
 const parsed = parsePrUrl("https://github.com/owner/repo/pull/123?foo=bar");
 assert.deepEqual(parsed, { owner: "owner", repo: "repo", number: 123 });
 
-assert.throws(() => parsePrUrl("https://example.com/not-a-pr"), /GitHub pull request URL/);
+assert.deepEqual(parsePrUrl("owner/repo#456"), { owner: "owner", repo: "repo", number: 456 });
+assert.deepEqual(parsePrUrl("owner/repo/789"), { owner: "owner", repo: "repo", number: 789 });
+
+assert.throws(() => parsePrUrl("https://example.com/not-a-pr"), /GitHub pull request URL|shorthand/);
+
+const marked = withCommentMarker("## PR Review\n");
+assert.ok(marked.startsWith("<!-- claude-pr-reviewer-agent -->"));
+assert.equal(withCommentMarker(marked), marked);
 
 const review = buildHeuristicReview({
   pull: {
