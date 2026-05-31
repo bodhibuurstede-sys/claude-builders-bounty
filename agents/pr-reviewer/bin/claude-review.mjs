@@ -4,14 +4,20 @@ import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+export const COMMENT_MARKER = "<!-- claude-pr-reviewer-agent -->";
 
 export function parsePrUrl(url) {
-  const match = String(url || "").match(
+  const value = String(url || "").trim();
+  const urlMatch = value.match(
     /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/,
   );
+  const shorthandMatch = value.match(/^([^/\s#]+)\/([^/\s#]+)(?:#|\/pull\/|\/)(\d+)$/);
+  const match = urlMatch || shorthandMatch;
 
   if (!match) {
-    throw new Error("Expected --pr to be a GitHub pull request URL, for example https://github.com/owner/repo/pull/123");
+    throw new Error(
+      "Expected --pr to be a GitHub pull request URL or shorthand like owner/repo#123",
+    );
   }
 
   return {
@@ -46,14 +52,15 @@ function parseArgs(argv) {
 function usage() {
   return `Usage:
   claude-review --pr https://github.com/owner/repo/pull/123 [--out review.md] [--post-comment] [--no-ai]
+  claude-review --pr owner/repo#123 [--post-comment]
 
 Environment:
   ANTHROPIC_API_KEY       Enables Claude-powered review generation.
-  GITHUB_TOKEN            Raises API limits and enables --post-comment.
+  GITHUB_TOKEN            Raises API limits and enables idempotent --post-comment.
   CLAUDE_REVIEW_MODEL     Optional; defaults to ${DEFAULT_MODEL}.`;
 }
 
-async function githubRequest(url, { accept = "application/vnd.github+json" } = {}) {
+async function githubRequest(url, { accept = "application/vnd.github+json", method = "GET", body } = {}) {
   const headers = {
     "accept": accept,
     "user-agent": "claude-pr-reviewer-agent",
@@ -63,12 +70,19 @@ async function githubRequest(url, { accept = "application/vnd.github+json" } = {
     headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
 
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`GitHub request failed (${response.status}) for ${url}\n${body}`);
+  const options = { method, headers };
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+    options.body = JSON.stringify(body);
   }
 
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new Error(`GitHub request failed (${response.status}) for ${url}\n${responseBody}`);
+  }
+
+  if (response.status === 204) return null;
   if (accept.includes("json")) return response.json();
   return response.text();
 }
@@ -260,26 +274,30 @@ ${diff.slice(0, 60000)}`;
     .trim();
 }
 
+export function withCommentMarker(markdown) {
+  const body = String(markdown || "").trimEnd();
+  if (body.startsWith(COMMENT_MARKER)) return `${body}\n`;
+  return `${COMMENT_MARKER}\n${body}\n`;
+}
+
 async function postComment({ owner, repo, number, markdown }) {
   if (!process.env.GITHUB_TOKEN) {
     throw new Error("--post-comment requires GITHUB_TOKEN with permission to comment on the pull request");
   }
 
-  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`, {
-    method: "POST",
-    headers: {
-      "authorization": `Bearer ${process.env.GITHUB_TOKEN}`,
-      "accept": "application/vnd.github+json",
-      "content-type": "application/json",
-      "user-agent": "claude-pr-reviewer-agent",
-    },
-    body: JSON.stringify({ body: markdown }),
-  });
+  const base = `https://api.github.com/repos/${owner}/${repo}`;
+  const body = withCommentMarker(markdown);
+  const comments = await githubRequest(`${base}/issues/${number}/comments?per_page=100`);
+  const existing = Array.isArray(comments)
+    ? comments.find((comment) => typeof comment.body === "string" && comment.body.includes(COMMENT_MARKER))
+    : null;
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Could not post PR comment (${response.status})\n${body}`);
+  if (existing?.url) {
+    await githubRequest(existing.url, { method: "PATCH", body: { body } });
+    return;
   }
+
+  await githubRequest(`${base}/issues/${number}/comments`, { method: "POST", body: { body } });
 }
 
 export async function reviewPr(prUrl, options = {}) {
