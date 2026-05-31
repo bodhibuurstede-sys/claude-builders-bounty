@@ -6,6 +6,12 @@ This bounty submission adds a Claude Code PR review agent plus a zero-dependency
 claude-review --pr https://github.com/owner/repo/pull/123
 ```
 
+The CLI also accepts shorthand references such as:
+
+```bash
+claude-review --pr owner/repo#123
+```
+
 The CLI fetches GitHub PR metadata, changed files, and the diff, then returns structured Markdown with:
 
 - Summary of changes
@@ -52,11 +58,30 @@ Run without Claude API calls:
 claude-review --pr https://github.com/owner/repo/pull/123 --no-ai
 ```
 
-Post the review as a PR comment:
+Post or update the review as a PR comment:
 
 ```bash
 GITHUB_TOKEN=github_pat_or_token claude-review --pr https://github.com/owner/repo/pull/123 --post-comment
 ```
+
+`--post-comment` is idempotent. It creates one comment containing `<!-- claude-pr-reviewer-agent -->`, then updates that same comment on later runs instead of posting duplicates.
+
+## GitHub Action
+
+The repository includes `.github/workflows/claude-review.yml` for automatic or manual PR reviews.
+
+Required configuration:
+
+- `GITHUB_TOKEN`: provided by GitHub Actions.
+- `ANTHROPIC_API_KEY`: optional repository secret. Without it, the workflow uses deterministic heuristic review output.
+
+The workflow uses `pull_request_target` but checks out the repository default branch, not the incoming PR head. The CLI fetches the PR diff through the GitHub API, which avoids executing untrusted pull request code while still allowing an idempotent review comment.
+
+Manual run:
+
+1. Open the workflow in GitHub Actions.
+2. Choose **Run workflow**.
+3. Provide a PR URL such as `https://github.com/owner/repo/pull/123`.
 
 ## Claude Code Agent
 
