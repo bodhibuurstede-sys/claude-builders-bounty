@@ -44,7 +44,7 @@ def run_git(args: list[str]) -> str:
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.strip() or exc.stdout.strip() or "git command failed"
         raise SystemExit(detail) from exc
-    return completed.stdout.strip()
+    return completed.stdout.rstrip("\r\n")
 
 
 def latest_local_tag() -> str | None:
@@ -60,7 +60,7 @@ def local_commits(since_tag: str | None, max_commits: int) -> list[Commit]:
     output = run_git(["log", "--no-merges", revision_range, f"--pretty=format:{fmt}"])
     commits: list[Commit] = []
     for raw in output.split("\x1e"):
-        raw = raw.strip()
+        raw = raw.strip("\r\n")
         if not raw:
             continue
         parts = raw.split("\x1f", 3)
