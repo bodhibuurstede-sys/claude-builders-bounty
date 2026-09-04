@@ -101,11 +101,10 @@
         "method": "POST",
         "url": "={{ $('Config').first().json.anthropicApiBaseUrl + '/v1/messages' }}",
         "sendHeaders": true,
-        "headerParameters": {"parameters":[{"name":"x-api-key","value":"={{ $env.ANTHROPIC_API_KEY }}"},{"name":"anthropic-version","value":"2023-06-01"},{"name":"content-type","value":"application/json"}]},
+        "headerParameters": {"parameters":[{"name":"x-api-key","value":"={{ $env.ANTHROPIC_API_KEY }}"},{"name":"anthropic-version","value":"2023-06-01"}]},
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1200, messages: [{ role: 'user', content: $json.prompt }] }) }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'claude-sonnet-4-20250514', max_tokens: 1200, messages: [{ role: 'user', content: $json.prompt }] } }}",
         "options": {"response":{"response":{"responseFormat":"json"}}}
       },
       "id": "a9999999-9999-4999-8999-999999999999",
@@ -115,7 +114,7 @@
       "position": [740, 20]
     },
     {
-      "parameters": {"jsCode":"const response = $json;\nlet body = response?.body !== undefined ? response.body : response;\nif (typeof body === 'string') { try { body = JSON.parse(body); } catch {} }\nconst text = Array.isArray(body?.content) ? body.content.filter(part => part?.type === 'text').map(part => part.text || '').join('\\n') : '';\nif (!text.trim()) throw new Error(`Claude response contained no text; keys=${Object.keys(response || {}).join(',')}; bodyKeys=${body && typeof body === 'object' ? Object.keys(body).join(',') : typeof body}`);\nreturn [{json:{content:text.trim()}}];"},
+      "parameters": {"jsCode":"const body = $json;\nconst text = Array.isArray(body?.content) ? body.content.filter(part => part?.type === 'text').map(part => part.text || '').join('\\n') : '';\nif (!text.trim()) throw new Error(`Claude response contained no text; keys=${Object.keys(body || {}).join(',')}`);\nreturn [{json:{content:text.trim()}}];"},
       "id": "abbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       "name": "Extract summary",
       "type": "n8n-nodes-base.code",
@@ -126,12 +125,9 @@
       "parameters": {
         "method": "POST",
         "url": "={{ $('Config').first().json.destinationWebhookUrl }}",
-        "sendHeaders": true,
-        "headerParameters": {"parameters":[{"name":"content-type","value":"application/json"}]},
         "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ content: $json.content.slice(0, 1900) }) }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.content.slice(0, 1900) } }}",
         "options": {"response":{"response":{"responseFormat":"text"}}}
       },
       "id": "accccccc-cccc-4ccc-8ccc-cccccccccccc",
