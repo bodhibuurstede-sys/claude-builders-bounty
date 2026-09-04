@@ -3,24 +3,12 @@
   "name": "Weekly GitHub Dev Summary with Claude",
   "nodes": [
     {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 17 * * 5"
-            }
-          ]
-        }
-      },
+      "parameters": {"rule":{"interval":[{"field":"cronExpression","expression":"0 17 * * 5"}]}},
       "id": "a1111111-1111-4111-8111-111111111111",
       "name": "Friday 17:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [
-        -1040,
-        -80
-      ]
+      "position": [-1040, -80]
     },
     {
       "parameters": {},
@@ -28,368 +16,147 @@
       "name": "Manual test",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [
-        -1040,
-        120
-      ]
+      "position": [-1040, 120]
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "cfg1",
-              "name": "githubRepo",
-              "value": "={{ $env.GITHUB_REPO || 'n8n-io/n8n' }}",
-              "type": "string"
-            },
-            {
-              "id": "cfg2",
-              "name": "language",
-              "value": "={{ ($env.SUMMARY_LANGUAGE || 'EN').toUpperCase() }}",
-              "type": "string"
-            },
-            {
-              "id": "cfg3",
-              "name": "githubApiBaseUrl",
-              "value": "={{ $env.GITHUB_API_BASE_URL || 'https://api.github.com' }}",
-              "type": "string"
-            },
-            {
-              "id": "cfg4",
-              "name": "anthropicApiBaseUrl",
-              "value": "={{ $env.ANTHROPIC_API_BASE_URL || 'https://api.anthropic.com' }}",
-              "type": "string"
-            },
-            {
-              "id": "cfg5",
-              "name": "destinationWebhookUrl",
-              "value": "={{ $env.DESTINATION_WEBHOOK_URL }}",
-              "type": "string"
-            }
-          ]
-        },
+        "assignments": {"assignments":[
+          {"id":"cfg1","name":"githubRepo","value":"={{ $env.GITHUB_REPO || 'n8n-io/n8n' }}","type":"string"},
+          {"id":"cfg2","name":"language","value":"={{ ($env.SUMMARY_LANGUAGE || 'EN').toUpperCase() }}","type":"string"},
+          {"id":"cfg3","name":"githubApiBaseUrl","value":"={{ $env.GITHUB_API_BASE_URL || 'https://api.github.com' }}","type":"string"},
+          {"id":"cfg4","name":"anthropicApiBaseUrl","value":"={{ $env.ANTHROPIC_API_BASE_URL || 'https://api.anthropic.com' }}","type":"string"},
+          {"id":"cfg5","name":"destinationWebhookUrl","value":"={{ $env.DESTINATION_WEBHOOK_URL }}","type":"string"}
+        ]},
         "options": {}
       },
       "id": "a3333333-3333-4333-8333-333333333333",
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        -800,
-        20
-      ]
+      "position": [-800, 20]
     },
     {
-      "parameters": {
-        "jsCode": "const cfg = $json;\nif (!cfg.githubRepo || !cfg.githubRepo.includes('/')) {\n  throw new Error('GITHUB_REPO must be owner/repo');\n}\nif (!['EN', 'FR'].includes(cfg.language)) {\n  throw new Error('SUMMARY_LANGUAGE must be EN or FR');\n}\nif (!cfg.destinationWebhookUrl) {\n  throw new Error('DESTINATION_WEBHOOK_URL is required');\n}\nconst [owner, repo] = cfg.githubRepo.split('/');\nconst until = new Date();\nconst since = new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);\nreturn [{\n  json: {\n    ...cfg,\n    owner,\n    repo,\n    since: since.toISOString(),\n    until: until.toISOString(),\n    sinceDate: since.toISOString().slice(0, 10),\n    untilDate: until.toISOString().slice(0, 10)\n  }\n}];"
-      },
+      "parameters": {"jsCode":"const cfg = $json;\nif (!cfg.githubRepo || !cfg.githubRepo.includes('/')) throw new Error('GITHUB_REPO must be owner/repo');\nif (!['EN', 'FR'].includes(cfg.language)) throw new Error('SUMMARY_LANGUAGE must be EN or FR');\nif (!cfg.destinationWebhookUrl) throw new Error('DESTINATION_WEBHOOK_URL is required');\nconst [owner, repo] = cfg.githubRepo.split('/');\nconst until = new Date();\nconst since = new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);\nreturn [{json:{...cfg,owner,repo,since:since.toISOString(),until:until.toISOString(),sinceDate:since.toISOString().slice(0,10),untilDate:until.toISOString().slice(0,10)}}];"},
       "id": "a4444444-4444-4444-8444-444444444444",
       "name": "Build date range",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -560,
-        20
-      ]
+      "position": [-560, 20]
     },
     {
       "parameters": {
         "url": "={{ $('Config').first().json.githubApiBaseUrl + '/repos/' + $json.owner + '/' + $json.repo + '/commits' }}",
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "since",
-              "value": "={{ $json.since }}"
-            },
-            {
-              "name": "until",
-              "value": "={{ $json.until }}"
-            },
-            {
-              "name": "per_page",
-              "value": "100"
-            }
-          ]
-        },
+        "queryParameters": {"parameters":[{"name":"since","value":"={{ $json.since }}"},{"name":"until","value":"={{ $json.until }}"},{"name":"per_page","value":"100"}]},
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/vnd.github+json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $env.GITHUB_TOKEN }}"
-            },
-            {
-              "name": "X-GitHub-Api-Version",
-              "value": "2022-11-28"
-            }
-          ]
-        },
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        }
+        "headerParameters": {"parameters":[{"name":"Accept","value":"application/vnd.github+json"},{"name":"Authorization","value":"={{ 'Bearer ' + $env.GITHUB_TOKEN }}"},{"name":"X-GitHub-Api-Version","value":"2022-11-28"}]},
+        "options": {"response":{"response":{"responseFormat":"json"}}}
       },
       "id": "a5555555-5555-4555-8555-555555555555",
       "name": "Fetch commits",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        -300,
-        20
-      ]
+      "position": [-300, 20]
     },
     {
       "parameters": {
         "url": "={{ $('Config').first().json.githubApiBaseUrl + '/search/issues' }}",
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "={{ 'repo:' + $('Build date range').first().json.githubRepo + ' is:issue is:closed closed:' + $('Build date range').first().json.sinceDate + '..' + $('Build date range').first().json.untilDate }}"
-            },
-            {
-              "name": "per_page",
-              "value": "100"
-            }
-          ]
-        },
+        "queryParameters": {"parameters":[{"name":"q","value":"={{ 'repo:' + $('Build date range').first().json.githubRepo + ' is:issue is:closed closed:' + $('Build date range').first().json.sinceDate + '..' + $('Build date range').first().json.untilDate }}"},{"name":"per_page","value":"100"}]},
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/vnd.github+json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $env.GITHUB_TOKEN }}"
-            },
-            {
-              "name": "X-GitHub-Api-Version",
-              "value": "2022-11-28"
-            }
-          ]
-        },
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        }
+        "headerParameters": {"parameters":[{"name":"Accept","value":"application/vnd.github+json"},{"name":"Authorization","value":"={{ 'Bearer ' + $env.GITHUB_TOKEN }}"},{"name":"X-GitHub-Api-Version","value":"2022-11-28"}]},
+        "options": {"response":{"response":{"responseFormat":"json"}}}
       },
       "id": "a6666666-6666-4666-8666-666666666666",
       "name": "Fetch closed issues",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        -40,
-        20
-      ]
+      "position": [-40, 20]
     },
     {
       "parameters": {
         "url": "={{ $('Config').first().json.githubApiBaseUrl + '/search/issues' }}",
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "={{ 'repo:' + $('Build date range').first().json.githubRepo + ' is:pr is:merged merged:' + $('Build date range').first().json.sinceDate + '..' + $('Build date range').first().json.untilDate }}"
-            },
-            {
-              "name": "per_page",
-              "value": "100"
-            }
-          ]
-        },
+        "queryParameters": {"parameters":[{"name":"q","value":"={{ 'repo:' + $('Build date range').first().json.githubRepo + ' is:pr is:merged merged:' + $('Build date range').first().json.sinceDate + '..' + $('Build date range').first().json.untilDate }}"},{"name":"per_page","value":"100"}]},
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/vnd.github+json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $env.GITHUB_TOKEN }}"
-            },
-            {
-              "name": "X-GitHub-Api-Version",
-              "value": "2022-11-28"
-            }
-          ]
-        },
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        }
+        "headerParameters": {"parameters":[{"name":"Accept","value":"application/vnd.github+json"},{"name":"Authorization","value":"={{ 'Bearer ' + $env.GITHUB_TOKEN }}"},{"name":"X-GitHub-Api-Version","value":"2022-11-28"}]},
+        "options": {"response":{"response":{"responseFormat":"json"}}}
       },
       "id": "a7777777-7777-4777-8777-777777777777",
       "name": "Fetch merged PRs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        220,
-        20
-      ]
+      "position": [220, 20]
     },
     {
-      "parameters": {
-        "jsCode": "const unwrap = (items) => items.flatMap((item) => Array.isArray(item.json) ? item.json : [item.json]);\nconst commits = unwrap($('Fetch commits').all());\nconst closedResponse = $('Fetch closed issues').first().json;\nconst mergedResponse = $('Fetch merged PRs').first().json;\nconst issues = Array.isArray(closedResponse) ? closedResponse : (closedResponse.items || []);\nconst prs = Array.isArray(mergedResponse) ? mergedResponse : (mergedResponse.items || []);\nconst range = $('Build date range').first().json;\n\nconst commitLines = commits.slice(0, 50).map(c =>\n  `- ${(c.sha || '').slice(0, 7)} ${(c.commit?.message || c.message || '').split('\\n')[0]}`\n);\nconst issueLines = issues.slice(0, 50).map(i => `- #${i.number}: ${i.title}`);\nconst prLines = prs.slice(0, 50).map(p => `- #${p.number}: ${p.title}`);\n\nconst languageInstruction = range.language === 'FR'\n  ? 'Write the final narrative in French.'\n  : 'Write the final narrative in English.';\n\nconst prompt = `You are writing a concise weekly engineering update for ${range.githubRepo}.\nPeriod: ${range.sinceDate} through ${range.untilDate}.\n${languageInstruction}\n\nUse only the activity below. Do not invent work. Mention meaningful themes, shipped changes, fixes, and notable maintenance. Avoid a raw list; synthesize a narrative with:\n1. Highlights\n2. What changed\n3. Issues resolved\n4. What to watch next (only if inferable from the supplied data)\n\nCOMMITS (${commits.length})\n${commitLines.join('\\n') || '- none'}\n\nCLOSED ISSUES (${issues.length})\n${issueLines.join('\\n') || '- none'}\n\nMERGED PRS (${prs.length})\n${prLines.join('\\n') || '- none'}`;\n\nreturn [{ json: { prompt, repo: range.githubRepo, language: range.language } }];"
-      },
+      "parameters": {"jsCode":"const payload = value => value && value.body !== undefined ? value.body : value;\nconst unwrap = items => items.flatMap(item => { const value = payload(item.json); return Array.isArray(value) ? value : [value]; });\nconst commits = unwrap($('Fetch commits').all());\nconst closedResponse = payload($('Fetch closed issues').first().json);\nconst mergedResponse = payload($('Fetch merged PRs').first().json);\nconst issues = Array.isArray(closedResponse) ? closedResponse : (closedResponse?.items || []);\nconst prs = Array.isArray(mergedResponse) ? mergedResponse : (mergedResponse?.items || []);\nconst range = $('Build date range').first().json;\nconst commitLines = commits.slice(0,50).map(c => `- ${(c?.sha || '').slice(0,7)} ${(c?.commit?.message || c?.message || '').split('\\n')[0]}`);\nconst issueLines = issues.slice(0,50).map(i => `- #${i.number}: ${i.title}`);\nconst prLines = prs.slice(0,50).map(p => `- #${p.number}: ${p.title}`);\nconst languageInstruction = range.language === 'FR' ? 'Write the final narrative in French.' : 'Write the final narrative in English.';\nconst prompt = `You are writing a concise weekly engineering update for ${range.githubRepo}.\nPeriod: ${range.sinceDate} through ${range.untilDate}.\n${languageInstruction}\n\nUse only the activity below. Do not invent work. Mention meaningful themes, shipped changes, fixes, and notable maintenance. Avoid a raw list; synthesize a narrative with:\n1. Highlights\n2. What changed\n3. Issues resolved\n4. What to watch next (only if inferable from the supplied data)\n\nCOMMITS (${commits.length})\n${commitLines.join('\\n') || '- none'}\n\nCLOSED ISSUES (${issues.length})\n${issueLines.join('\\n') || '- none'}\n\nMERGED PRS (${prs.length})\n${prLines.join('\\n') || '- none'}`;\nreturn [{json:{prompt,repo:range.githubRepo,language:range.language}}];"},
       "id": "a8888888-8888-4888-8888-888888888888",
       "name": "Build Claude prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        480,
-        20
-      ]
+      "position": [480, 20]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "={{ $('Config').first().json.anthropicApiBaseUrl + '/v1/messages' }}",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-key",
-              "value": "={{ $env.ANTHROPIC_API_KEY }}"
-            },
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": {"parameters":[{"name":"x-api-key","value":"={{ $env.ANTHROPIC_API_KEY }}"},{"name":"anthropic-version","value":"2023-06-01"},{"name":"content-type","value":"application/json"}]},
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1200, messages: [{ role: 'user', content: $json.prompt }] }) }}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        }
+        "options": {"response":{"response":{"responseFormat":"json"}}}
       },
       "id": "a9999999-9999-4999-8999-999999999999",
       "name": "Generate summary with Claude",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        740,
-        20
-      ]
+      "position": [740, 20]
     },
     {
-      "parameters": {
-        "jsCode": "const body = $json;\nconst text = Array.isArray(body.content)\n  ? body.content.filter(part => part.type === 'text').map(part => part.text).join('\\n')\n  : '';\nif (!text.trim()) throw new Error('Claude response contained no text');\nreturn [{ json: { content: text.trim() } }];"
-      },
+      "parameters": {"jsCode":"const response = $json;\nlet body = response?.body !== undefined ? response.body : response;\nif (typeof body === 'string') { try { body = JSON.parse(body); } catch {} }\nconst text = Array.isArray(body?.content) ? body.content.filter(part => part?.type === 'text').map(part => part.text || '').join('\\n') : '';\nif (!text.trim()) throw new Error(`Claude response contained no text; keys=${Object.keys(response || {}).join(',')}; bodyKeys=${body && typeof body === 'object' ? Object.keys(body).join(',') : typeof body}`);\nreturn [{json:{content:text.trim()}}];"},
       "id": "abbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       "name": "Extract summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1000,
-        20
-      ]
+      "position": [1000, 20]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "={{ $('Config').first().json.destinationWebhookUrl }}",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": {"parameters":[{"name":"content-type","value":"application/json"}]},
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify({ content: $json.content.slice(0, 1900) }) }}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "text"
-            }
-          }
-        }
+        "options": {"response":{"response":{"responseFormat":"text"}}}
       },
       "id": "accccccc-cccc-4ccc-8ccc-cccccccccccc",
       "name": "Deliver to Discord",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        1260,
-        20
-      ]
+      "position": [1260, 20]
     }
   ],
   "connections": {
-    "Friday 17:00": {
-      "main": [[{"node":"Config","type":"main","index":0}]]
-    },
-    "Manual test": {
-      "main": [[{"node":"Config","type":"main","index":0}]]
-    },
-    "Config": {
-      "main": [[{"node":"Build date range","type":"main","index":0}]]
-    },
-    "Build date range": {
-      "main": [[{"node":"Fetch commits","type":"main","index":0}]]
-    },
-    "Fetch commits": {
-      "main": [[{"node":"Fetch closed issues","type":"main","index":0}]]
-    },
-    "Fetch closed issues": {
-      "main": [[{"node":"Fetch merged PRs","type":"main","index":0}]]
-    },
-    "Fetch merged PRs": {
-      "main": [[{"node":"Build Claude prompt","type":"main","index":0}]]
-    },
-    "Build Claude prompt": {
-      "main": [[{"node":"Generate summary with Claude","type":"main","index":0}]]
-    },
-    "Generate summary with Claude": {
-      "main": [[{"node":"Extract summary","type":"main","index":0}]]
-    },
-    "Extract summary": {
-      "main": [[{"node":"Deliver to Discord","type":"main","index":0}]]
-    }
+    "Friday 17:00":{"main":[[{"node":"Config","type":"main","index":0}]]},
+    "Manual test":{"main":[[{"node":"Config","type":"main","index":0}]]},
+    "Config":{"main":[[{"node":"Build date range","type":"main","index":0}]]},
+    "Build date range":{"main":[[{"node":"Fetch commits","type":"main","index":0}]]},
+    "Fetch commits":{"main":[[{"node":"Fetch closed issues","type":"main","index":0}]]},
+    "Fetch closed issues":{"main":[[{"node":"Fetch merged PRs","type":"main","index":0}]]},
+    "Fetch merged PRs":{"main":[[{"node":"Build Claude prompt","type":"main","index":0}]]},
+    "Build Claude prompt":{"main":[[{"node":"Generate summary with Claude","type":"main","index":0}]]},
+    "Generate summary with Claude":{"main":[[{"node":"Extract summary","type":"main","index":0}]]},
+    "Extract summary":{"main":[[{"node":"Deliver to Discord","type":"main","index":0}]]}
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
+  "settings": {"executionOrder":"v1"},
   "versionId": "ad555555-5555-4555-8555-555555555555",
-  "meta": {
-    "templateCredsSetupCompleted": true
-  },
+  "meta": {"templateCredsSetupCompleted":true},
   "tags": [],
   "pinData": {}
 }
