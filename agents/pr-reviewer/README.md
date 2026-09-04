@@ -19,7 +19,7 @@ The CLI fetches GitHub PR metadata, changed files, and the diff, then returns st
 - Improvement suggestions
 - Confidence score: Low, Medium, or High
 
-If `ANTHROPIC_API_KEY` is set, the CLI asks Claude Sonnet 4 to write the review. If no key is present, it falls back to deterministic diff-metadata review so the tool remains testable in CI and local development.
+If `ANTHROPIC_API_KEY` is set, the CLI asks Claude Sonnet 5 to write the review. If no key is present, it falls back to deterministic diff-metadata review so the tool remains testable in CI and local development.
 
 ## Setup
 
