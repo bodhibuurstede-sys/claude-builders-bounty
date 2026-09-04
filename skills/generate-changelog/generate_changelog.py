@@ -49,7 +49,7 @@ def run_git(args: list[str]) -> str:
 
 def latest_local_tag() -> str | None:
     try:
-        return run_git(["describe", "--tags", "--abbrev=0"])
+        return run_git(["describe", "--tags", "--abbrev=0", "HEAD"])
     except SystemExit:
         return None
 
@@ -131,6 +131,13 @@ def urllib_json(url: str, headers: dict[str, str]) -> object:
         raise SystemExit(f"GitHub API request failed ({exc.code}): {message}") from exc
 
 
+def github_default_branch(owner: str, repo: str, token: str | None) -> str:
+    payload = github_json(f"/repos/{owner}/{repo}", token)
+    if not isinstance(payload, dict) or not payload.get("default_branch"):
+        raise SystemExit("GitHub API response did not include a default branch")
+    return str(payload["default_branch"])
+
+
 def latest_github_tag(owner: str, repo: str, token: str | None) -> str | None:
     payload = github_json(f"/repos/{owner}/{repo}/tags?per_page=1", token)
     if isinstance(payload, list) and payload:
@@ -139,23 +146,43 @@ def latest_github_tag(owner: str, repo: str, token: str | None) -> str | None:
     return None
 
 
-def github_commits(owner: str, repo: str, since_tag: str | None, max_commits: int, token: str | None) -> list[Commit]:
+def github_commits(
+    owner: str,
+    repo: str,
+    since_tag: str | None,
+    max_commits: int,
+    token: str | None,
+    head_ref: str | None = None,
+) -> list[Commit]:
     if since_tag:
         encoded_tag = quote(since_tag, safe="")
-        payload = github_json(f"/repos/{owner}/{repo}/compare/{encoded_tag}...HEAD", token)
+        branch = head_ref or github_default_branch(owner, repo, token)
+        encoded_branch = quote(branch, safe="")
+        payload = github_json(
+            f"/repos/{owner}/{repo}/compare/{encoded_tag}...{encoded_branch}",
+            token,
+        )
         raw_commits = payload.get("commits", []) if isinstance(payload, dict) else []
     else:
-        payload = github_json(f"/repos/{owner}/{repo}/commits?per_page={min(max_commits, 100)}", token)
+        query = f"?per_page={min(max_commits, 100)}"
+        if head_ref:
+            query += f"&sha={quote(head_ref, safe='')}"
+        payload = github_json(f"/repos/{owner}/{repo}/commits{query}", token)
         raw_commits = payload if isinstance(payload, list) else []
 
     commits: list[Commit] = []
     for item in reversed(raw_commits):
+        if not isinstance(item, dict):
+            continue
         commit = item.get("commit", {})
+        if not isinstance(commit, dict):
+            continue
         message = str(commit.get("message", "")).strip()
         subject, _, body = message.partition("\n")
         if subject.lower().startswith("merge "):
             continue
-        author = commit.get("author", {}).get("name", "")
+        commit_author = commit.get("author", {})
+        author = commit_author.get("name", "") if isinstance(commit_author, dict) else ""
         commits.append(
             Commit(
                 sha=str(item.get("sha", "")),
@@ -230,7 +257,15 @@ def build_changelog(args: argparse.Namespace) -> str:
     if args.repo:
         owner, repo = parse_github_repo(args.repo)
         since_tag = args.since_tag or latest_github_tag(owner, repo, args.token)
-        commits = github_commits(owner, repo, since_tag, args.max_commits, args.token)
+        head_ref = github_default_branch(owner, repo, args.token)
+        commits = github_commits(
+            owner,
+            repo,
+            since_tag,
+            args.max_commits,
+            args.token,
+            head_ref=head_ref,
+        )
         return render_changelog(commits, since_tag, f"github.com/{owner}/{repo}")
 
     since_tag = args.since_tag or latest_local_tag()
@@ -239,12 +274,22 @@ def build_changelog(args: argparse.Namespace) -> str:
     return render_changelog(commits, since_tag, root)
 
 
+def positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate CHANGELOG.md from commits since the latest tag.")
     parser.add_argument("--output", default="CHANGELOG.md", help="Path to write. Defaults to CHANGELOG.md.")
     parser.add_argument("--repo", help="GitHub owner/name or URL. Uses the GitHub API instead of local git.")
     parser.add_argument("--since-tag", help="Tag to compare from. Auto-detects the latest tag when omitted.")
-    parser.add_argument("--max-commits", type=int, default=100, help="Maximum commits to include.")
+    parser.add_argument("--max-commits", type=positive_int, default=100, help="Maximum commits to include.")
     parser.add_argument("--dry-run", action="store_true", help="Print the changelog instead of writing a file.")
     parser.add_argument("--token", default=os.environ.get("GITHUB_TOKEN"), help="GitHub token for API mode.")
     return parser.parse_args(argv)
