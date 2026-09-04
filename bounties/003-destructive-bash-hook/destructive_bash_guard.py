@@ -26,6 +26,24 @@ SQL_CLIENTS = {
 }
 COMMAND_WRAPPERS = {"builtin", "command", "nohup", "sudo", "time"}
 SHELL_SEPARATORS = {";", "&&", "||", "|"}
+SUDO_OPTIONS_WITH_VALUES = {
+    "-C",
+    "--chdir",
+    "-g",
+    "--group",
+    "-h",
+    "--host",
+    "-p",
+    "--prompt",
+    "-R",
+    "--chroot",
+    "-T",
+    "--command-timeout",
+    "-u",
+    "--user",
+}
+ENV_OPTIONS_WITH_VALUES = {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
+GIT_OPTIONS_WITH_VALUES = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
 
 
 def find_block_reason(command: str) -> str | None:
@@ -108,7 +126,7 @@ def _contains_forced_recursive_rm(command: str) -> bool:
         for flag in flags:
             if flag == "--":
                 break
-            if flag in {"-r", "-R", "--recursive", "-d"}:
+            if flag in {"-r", "-R", "--recursive"}:
                 has_recursive = True
             if flag in {"-f", "--force"}:
                 has_force = True
@@ -125,11 +143,15 @@ def _contains_forced_recursive_rm(command: str) -> bool:
 def _contains_git_force_push(command: str) -> bool:
     for argv in _simple_commands(command):
         git_index = _executable_index(argv, "git")
-        if git_index is None or len(argv) <= git_index + 2:
+        if git_index is None:
             continue
-        if argv[git_index + 1] != "push":
+        push_index = _git_subcommand_index(argv, git_index)
+        if push_index is None or argv[push_index] != "push":
             continue
-        if any(arg in {"--force", "-f", "--force-with-lease"} for arg in argv[git_index + 2 :]):
+        push_args = argv[push_index + 1 :]
+        if any(arg in {"--force", "-f", "--force-with-lease"} for arg in push_args):
+            return True
+        if any(arg.startswith("+") and len(arg) > 1 for arg in push_args if not arg.startswith("++")):
             return True
     return False
 
@@ -238,9 +260,11 @@ def _executable_index(argv: list[str], name: str) -> int | None:
 
         base = Path(token).name
         if base == "env":
-            index += 1
-            while index < len(argv) and (argv[index].startswith("-") or "=" in argv[index]):
-                index += 1
+            index = _skip_wrapper_options(argv, index + 1, ENV_OPTIONS_WITH_VALUES, allow_assignments=True)
+            continue
+
+        if base == "sudo":
+            index = _skip_wrapper_options(argv, index + 1, SUDO_OPTIONS_WITH_VALUES, allow_assignments=True)
             continue
 
         if base in COMMAND_WRAPPERS:
@@ -252,6 +276,53 @@ def _executable_index(argv: list[str], name: str) -> int | None:
         return None
 
     return None
+
+
+def _skip_wrapper_options(
+    argv: list[str],
+    index: int,
+    options_with_values: set[str],
+    *,
+    allow_assignments: bool,
+) -> int:
+    while index < len(argv):
+        token = argv[index]
+        if token == "--":
+            return index + 1
+        if allow_assignments and "=" in token and not token.startswith("=") and not token.startswith("-"):
+            index += 1
+            continue
+        if token in options_with_values:
+            index += 2
+            continue
+        if any(token.startswith(f"{option}=") for option in options_with_values if option.startswith("--")):
+            index += 1
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        return index
+    return index
+
+
+def _git_subcommand_index(argv: list[str], git_index: int) -> int | None:
+    index = git_index + 1
+    while index < len(argv):
+        token = argv[index]
+        if token == "--":
+            index += 1
+            break
+        if token in GIT_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        if any(token.startswith(f"{option}=") for option in GIT_OPTIONS_WITH_VALUES if option.startswith("--")):
+            index += 1
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        break
+    return index if index < len(argv) else None
 
 
 def _is_command_name(arg: str, name: str) -> bool:
