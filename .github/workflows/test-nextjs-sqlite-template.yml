@@ -1,0 +1,27 @@
+name: Test Next.js SQLite CLAUDE template
+
+on:
+  push:
+    branches:
+      - codex/nextjs-sqlite-claude-template
+  pull_request:
+    paths:
+      - 'templates/nextjs-sqlite-saas/**'
+      - '.github/workflows/test-nextjs-sqlite-template.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate template contract
+        run: node templates/nextjs-sqlite-saas/validate-template.mjs
+      - name: Reject unresolved placeholders
+        run: |
+          ! grep -Eri '\b(TODO|TBD)\b|<your[- _]|replace me' templates/nextjs-sqlite-saas/CLAUDE.md
