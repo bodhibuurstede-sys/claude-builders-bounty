@@ -24,6 +24,8 @@ SQL_CLIENTS = {
     "sqlite3",
     "sqlcmd",
 }
+COMMAND_WRAPPERS = {"builtin", "command", "nohup", "sudo", "time"}
+SHELL_SEPARATORS = {";", "&&", "||", "|"}
 
 
 def find_block_reason(command: str) -> str | None:
@@ -71,10 +73,10 @@ def log_block(input_data: dict[str, Any], command: str, reason: str) -> None:
 def main() -> int:
     try:
         input_data = json.load(sys.stdin)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return 0
 
-    if input_data.get("tool_name") != "Bash":
+    if not isinstance(input_data, dict) or input_data.get("tool_name") != "Bash":
         return 0
 
     tool_input = input_data.get("tool_input")
@@ -95,12 +97,9 @@ def main() -> int:
 
 
 def _contains_forced_recursive_rm(command: str) -> bool:
-    for argv in _split_command_words(command):
-        if not argv:
-            continue
-        try:
-            rm_index = next(i for i, arg in enumerate(argv) if _is_command_name(arg, "rm"))
-        except StopIteration:
+    for argv in _simple_commands(command):
+        rm_index = _executable_index(argv, "rm")
+        if rm_index is None:
             continue
 
         flags = argv[rm_index + 1 :]
@@ -124,14 +123,11 @@ def _contains_forced_recursive_rm(command: str) -> bool:
 
 
 def _contains_git_force_push(command: str) -> bool:
-    for argv in _split_command_words(command):
-        if len(argv) < 3:
+    for argv in _simple_commands(command):
+        git_index = _executable_index(argv, "git")
+        if git_index is None or len(argv) <= git_index + 2:
             continue
-        try:
-            git_index = next(i for i, arg in enumerate(argv) if _is_command_name(arg, "git"))
-        except StopIteration:
-            continue
-        if len(argv) <= git_index + 2 or argv[git_index + 1] != "push":
+        if argv[git_index + 1] != "push":
             continue
         if any(arg in {"--force", "-f", "--force-with-lease"} for arg in argv[git_index + 2 :]):
             return True
@@ -139,14 +135,14 @@ def _contains_git_force_push(command: str) -> bool:
 
 
 def _contains_sql_pattern(command: str, pattern: str) -> bool:
-    for statement in _sql_relevant_statements(command):
+    for statement in _sql_statements(command):
         if re.search(pattern, statement, flags=re.IGNORECASE):
             return True
     return False
 
 
 def _contains_delete_without_where(command: str) -> bool:
-    for statement in _sql_relevant_statements(command):
+    for statement in _sql_statements(command):
         if re.search(r"\bdelete\s+from\b", statement, flags=re.IGNORECASE) and not re.search(
             r"\bwhere\b",
             statement,
@@ -156,21 +152,26 @@ def _contains_delete_without_where(command: str) -> bool:
     return False
 
 
-def _sql_relevant_statements(command: str) -> list[str]:
+def _sql_statements(command: str) -> list[str]:
     statements: list[str] = []
-    for segment in re.split(r";|&&|\|\|", command):
-        stripped = " ".join(segment.split())
-        if not stripped:
+    for group in _pipeline_groups(command):
+        if not group:
             continue
-        if _segment_uses_sql_client(segment) or _starts_with_sql_keyword(stripped):
-            statements.append(stripped)
+        rendered = " ".join(group)
+        if _group_uses_sql_client(group) or _starts_with_sql_keyword(rendered):
+            statements.extend(part.strip() for part in rendered.split(";") if part.strip())
     return statements
 
 
-def _segment_uses_sql_client(segment: str) -> bool:
-    for argv in _split_command_words(segment):
-        if any(_is_command_name(arg, client) for arg in argv for client in SQL_CLIENTS):
-            return True
+def _group_uses_sql_client(group: list[str]) -> bool:
+    current: list[str] = []
+    for token in [*group, "|"]:
+        if token == "|":
+            if current and any(_executable_index(current, client) is not None for client in SQL_CLIENTS):
+                return True
+            current = []
+        else:
+            current.append(token)
     return False
 
 
@@ -178,14 +179,79 @@ def _starts_with_sql_keyword(statement: str) -> bool:
     return bool(re.match(r"^\s*(drop\s+table|truncate|delete\s+from)\b", statement, flags=re.IGNORECASE))
 
 
-def _split_command_words(command: str) -> list[list[str]]:
+def _simple_commands(command: str) -> list[list[str]]:
     commands: list[list[str]] = []
-    for segment in re.split(r";|&&|\|\|", command):
-        try:
-            commands.append(shlex.split(segment, posix=True))
-        except ValueError:
-            commands.append(segment.split())
+    for group in _token_groups(command):
+        current: list[str] = []
+        for token in [*group, "|"]:
+            if token == "|":
+                if current:
+                    commands.append(current)
+                current = []
+            else:
+                current.append(token)
     return commands
+
+
+def _pipeline_groups(command: str) -> list[list[str]]:
+    return _token_groups(command)
+
+
+def _token_groups(command: str) -> list[list[str]]:
+    groups: list[list[str]] = []
+    for line in command.splitlines() or [command]:
+        try:
+            lexer = shlex.shlex(line, posix=True, punctuation_chars=";&|")
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            tokens = list(lexer)
+        except ValueError:
+            tokens = line.split()
+
+        current: list[str] = []
+        for token in tokens:
+            if token in {";", "&&", "||"}:
+                if current:
+                    groups.append(current)
+                current = []
+                continue
+            if token and set(token) <= set(";&|") and token not in SHELL_SEPARATORS:
+                if current:
+                    groups.append(current)
+                current = []
+                continue
+            current.append(token)
+        if current:
+            groups.append(current)
+    return groups
+
+
+def _executable_index(argv: list[str], name: str) -> int | None:
+    if not argv:
+        return None
+
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if _is_command_name(token, name):
+            return index
+
+        base = Path(token).name
+        if base == "env":
+            index += 1
+            while index < len(argv) and (argv[index].startswith("-") or "=" in argv[index]):
+                index += 1
+            continue
+
+        if base in COMMAND_WRAPPERS:
+            index += 1
+            while index < len(argv) and argv[index].startswith("-"):
+                index += 1
+            continue
+
+        return None
+
+    return None
 
 
 def _is_command_name(arg: str, name: str) -> bool:
