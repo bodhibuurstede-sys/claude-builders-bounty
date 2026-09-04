@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Use Node 24 for current n8n
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Static workflow contract
         run: python bounties/005-weekly-dev-summary/test_workflow.py
 
