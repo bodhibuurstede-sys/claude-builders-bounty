@@ -66,6 +66,12 @@ GITHUB_TOKEN=github_pat_or_token claude-review --pr https://github.com/owner/rep
 
 `--post-comment` is idempotent. It creates one comment containing `<!-- claude-pr-reviewer-agent -->`, then updates that same comment on later runs instead of posting duplicates.
 
+## Safety and completeness
+
+Pull request content is untrusted input. Claude-powered reviews put the reviewer policy in the API system prompt and serialize the PR title, author, file metadata, and diff separately as user data. The policy explicitly tells Claude not to follow instructions embedded in code, comments, filenames, tests, or the diff. This reduces indirect prompt-injection risk from a malicious pull request.
+
+Changed-file and existing-comment lookups are paginated instead of stopping at GitHub's first 100 results. Very large diffs are capped before being sent to Claude and carry an explicit truncation marker, while the deterministic review path can still inspect the complete fetched diff.
+
 ## GitHub Action
 
 The repository includes `.github/workflows/claude-review.yml` for automatic or manual PR reviews.
@@ -100,6 +106,8 @@ Run the format test:
 ```bash
 npm test
 ```
+
+The test covers PR URL parsing, structured heuristic output, comment idempotency markers, prompt-injection isolation, diff truncation, and paginated GitHub responses.
 
 On Windows environments with custom enterprise root certificates, Node may need the system certificate store:
 
