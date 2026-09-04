@@ -24,11 +24,20 @@ def main() -> int:
     shutil.copy2(SOURCE_HOOK, INSTALLED_HOOK)
 
     settings = _load_settings()
-    pre_tool_hooks = settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
+    hooks_root = settings.setdefault("hooks", {})
+    if not isinstance(hooks_root, dict):
+        raise SystemExit("~/.claude/settings.json has a non-object 'hooks' value")
+
+    pre_tool_hooks = hooks_root.setdefault("PreToolUse", [])
+    if not isinstance(pre_tool_hooks, list):
+        raise SystemExit("~/.claude/settings.json has a non-list hooks.PreToolUse value")
+
     hook_group = _bash_hook_group(pre_tool_hooks)
     hooks = hook_group.setdefault("hooks", [])
+    if not isinstance(hooks, list):
+        raise SystemExit("Existing Bash PreToolUse group has a non-list 'hooks' value")
 
-    if not any(hook.get("command") == HOOK_COMMAND for hook in hooks):
+    if not any(isinstance(hook, dict) and hook.get("command") == HOOK_COMMAND for hook in hooks):
         hooks.append({"type": "command", "command": HOOK_COMMAND})
 
     SETTINGS_PATH.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
@@ -40,14 +49,23 @@ def main() -> int:
 def _load_settings() -> dict:
     if not SETTINGS_PATH.exists():
         return {}
+
+    try:
+        settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid JSON in {SETTINGS_PATH}: {exc}") from exc
+    if not isinstance(settings, dict):
+        raise SystemExit(f"{SETTINGS_PATH} must contain a JSON object")
+
     backup = SETTINGS_PATH.with_suffix(".json.bak")
-    shutil.copy2(SETTINGS_PATH, backup)
-    return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    if not backup.exists():
+        shutil.copy2(SETTINGS_PATH, backup)
+    return settings
 
 
 def _bash_hook_group(pre_tool_hooks: list[dict]) -> dict:
     for group in pre_tool_hooks:
-        if group.get("matcher") == "Bash":
+        if isinstance(group, dict) and group.get("matcher") == "Bash":
             return group
     group = {"matcher": "Bash", "hooks": []}
     pre_tool_hooks.append(group)
