@@ -25,9 +25,12 @@ class DestructiveBashGuardTest(unittest.TestCase):
         cases = [
             "rm -rf /tmp/build",
             "sudo rm -r -f ./dist",
+            "sudo -u root rm -rf ./dist",
+            "sudo --user=root rm -rf ./dist",
             "/bin/rm -rf ./dist",
             "rm --recursive --force old-cache",
             "env CI=1 rm -fr node_modules",
+            "env -u DEBUG CI=1 rm -rf node_modules",
             "command rm -rf cache",
             "npm test && rm -rf coverage",
             "printf done | rm -rf scratch",
@@ -37,12 +40,14 @@ class DestructiveBashGuardTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIn("recursive remove", guard.find_block_reason(command))
 
-    def test_does_not_treat_rm_text_as_execution(self) -> None:
+    def test_does_not_treat_rm_text_or_non_recursive_delete_as_execution(self) -> None:
         cases = [
             'echo "rm -rf /"',
             'printf "rm -rf ./build"',
             'grep "rm -rf" README.md',
             'python -c "print(\'rm -rf /\')"',
+            "rm -df empty-dir",
+            "rm -f file.txt",
         ]
         for command in cases:
             with self.subTest(command=command):
@@ -57,7 +62,12 @@ class DestructiveBashGuardTest(unittest.TestCase):
             "git push -f origin main",
             "/usr/bin/git push --force origin main",
             "sudo git push --force-with-lease origin main",
+            "sudo -u deploy git push --force origin main",
             "env CI=1 git push -f origin main",
+            "git -C /tmp/repo push --force origin main",
+            "git -c core.hooksPath=/dev/null push --force origin main",
+            "git --git-dir=/tmp/repo/.git push --force origin main",
+            "git push origin +main:main",
             "git status && git push --force origin main",
         ]
         for command in cases:
