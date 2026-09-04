@@ -3,7 +3,7 @@
 import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_MODEL = "claude-sonnet-5";
 export const COMMENT_MARKER = "<!-- claude-pr-reviewer-agent -->";
 
 export function parsePrUrl(url) {
